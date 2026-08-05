@@ -13,7 +13,7 @@ const REWARD_WALLET = 'GW6PN47T4LJASKLHeAuVHhic9JFdyHd4hJsFhDqBukcS';
 const GAME_URL = 'https://www.doomsol.com';
 const NUM_ACCOUNTS = 5;
 const HEADLESS = true;
-const DELAY_BETWEEN = 8000;
+const DELAY_BETWEEN = 12000;
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function ts() { return '[' + new Date().toISOString().slice(11, 19) + ']'; }
@@ -117,9 +117,9 @@ async function submitOne(browser, wallet) {
         }
 
         // Upload valid demo (won't crash replay worker)
-        // Valid DOOM 1.9 demo format (won't crash replay worker):
-        // header(13) + player1(3: isbot+num+name) = 16 bytes
-        var demo = new Uint8Array(16);
+        // Valid DOOM 1.9 demo + 1 tic gameplay (stand still at spawn):
+        // header(13) + player1(3) + 1 tic(4) = 20 bytes
+        var demo = new Uint8Array(20);
         demo[0] = 0x6C;  // version 1.9
         demo[1] = 4;      // Ultra-Violence
         demo[2] = 1;      // episode 1
@@ -127,10 +127,10 @@ async function submitOne(browser, wallet) {
         demo[4] = 0;      // single player
         demo[5] = 0;      // unused
         demo[6] = 1;      // player 1 present
-        // [7-9] other players = 0
-        // [10-12] unused = 0
+        // [7-12] = 0
         // Player 1: isbot=0, number=0, name=\0
-        // No tics = instant demo end (0 kills/items/secrets)
+        // 1 tic: stand still (forward=0, strafe=0, turn=0, action=0)
+        // = 4 bytes of zeros at positions 16-19
 
         var dr = await fetch(API + '/demo', {
           method: 'POST',
