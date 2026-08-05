@@ -88,12 +88,20 @@ function printReport(results, startTime) {
 // === SUBMIT ONE ===
 async function submitOne(browser, wallet) {
   var page = await browser.newPage();
-  var result = { index: wallet.index, name: wallet.name, pubkey: wallet.pubkey, ok: false };
+  var result = { index: wallet.index, name: wallet.name, pubkey: wallet.pubkey, ok: false, debug: {} };
 
   try {
     var submitted = false;
+    var apiCalls = [];
+
     page.on('response', async (res) => {
-      if (res.url().includes('/api/score') && res.request().method() === 'POST') {
+      var url = res.url();
+      if (url.includes('/api/')) {
+        var method = res.request().method();
+        var status = res.status();
+        apiCalls.push(method + ' ' + url.split('/api')[1] + ' -> ' + status);
+      }
+      if (url.includes('/api/score') && res.request().method() === 'POST') {
         try { var b = await res.json(); if (b.ok) submitted = true; } catch(e) {}
       }
     });
@@ -103,15 +111,17 @@ async function submitOne(browser, wallet) {
     await sleep(5000);
 
     // Inject levelstat
+    var injectMsg = '';
     var done = await page.evaluate((data) => {
       try {
         var m = window.Module || window.__DOOM_MODULE;
-        if (m && m.FS) { m.FS.writeFile('/levelstat.txt', data); return true; }
-        return false;
-      } catch(e) { return false; }
+        if (m && m.FS) { m.FS.writeFile('/levelstat.txt', data); return 'ok-direct'; }
+        return 'no-module';
+      } catch(e) { return 'err-' + e.message; }
     }, LEVELSTAT_5000);
+    injectMsg = done;
 
-    if (!done) {
+    if (done !== 'ok-direct') {
       await page.evaluate(() => {
         var o = Object.defineProperty;
         Object.defineProperty = function(obj, prop, desc) {
@@ -121,11 +131,15 @@ async function submitOne(browser, wallet) {
       });
       await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
       await sleep(7000);
-      await page.evaluate((data) => {
+      var done2 = await page.evaluate((data) => {
         var m = window.Module || window.__DOOM_MODULE;
-        if (m && m.FS) m.FS.writeFile('/levelstat.txt', data);
+        if (m && m.FS) { m.FS.writeFile('/levelstat.txt', data); return 'ok-hook'; }
+        return 'still-no-module';
       }, LEVELSTAT_5000);
+      injectMsg += ' -> ' + done2;
     }
+
+    result.debug = { inject: injectMsg, apiCalls: apiCalls };
 
     await sleep(10000);
 
@@ -204,7 +218,10 @@ async function main() {
     if (r.ok) {
       log('[' + (i+1) + '/' + NUM_ACCOUNTS + '] OK — score submitted');
     } else {
-      log('[' + (i+1) + '/' + NUM_ACCOUNTS + '] FAIL' + (r.error ? ' — ' + r.error : ''));
+      var detail = r.debug ? ' [inject: ' + r.debug.inject + ']' : '';
+      if (r.error) detail += ' [' + r.error + ']';
+      if (r.debug && r.debug.apiCalls.length > 0) detail += ' [API: ' + r.debug.apiCalls.join(', ') + ']';
+      log('[' + (i+1) + '/' + NUM_ACCOUNTS + '] FAIL' + detail);
     }
 
     // Save progress after each account
