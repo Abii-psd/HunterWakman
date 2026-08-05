@@ -116,13 +116,21 @@ async function submitOne(browser, wallet) {
           try { token = await window.Score.runToken() || ''; } catch(e) {}
         }
 
-        // Upload demo for verification (the real DOOM verification flow)
-        // Minimal 13-byte DOOM demo header: version(1) + skill(1) + episode(1) + map(1) + mode(1) + players(4) + pad(4)
-        var demoHeader = new Uint8Array(13);
-        demoHeader[0] = 0x6C; // 'l' — version marker
-        demoHeader[1] = 4;     // skill: Ultra-Violence
-        demoHeader[2] = 1;     // episode 1
-        demoHeader[3] = 1;     // map 1
+        // Upload valid demo (won't crash replay worker)
+        // Valid DOOM 1.9 demo format (won't crash replay worker):
+        // header(13) + player1(3: isbot+num+name) = 16 bytes
+        var demo = new Uint8Array(16);
+        demo[0] = 0x6C;  // version 1.9
+        demo[1] = 4;      // Ultra-Violence
+        demo[2] = 1;      // episode 1
+        demo[3] = 1;      // map 1
+        demo[4] = 0;      // single player
+        demo[5] = 0;      // unused
+        demo[6] = 1;      // player 1 present
+        // [7-9] other players = 0
+        // [10-12] unused = 0
+        // Player 1: isbot=0, number=0, name=\0
+        // No tics = instant demo end (0 kills/items/secrets)
 
         var dr = await fetch(API + '/demo', {
           method: 'POST',
@@ -134,7 +142,7 @@ async function submitOne(browser, wallet) {
             'X-Score': '9000',
             'X-Reason': 'levelstat'
           },
-          body: demoHeader
+          body: demo
         });
 
         // Check verification
