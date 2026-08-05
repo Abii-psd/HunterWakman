@@ -94,6 +94,30 @@ async function submitOne(browser, wallet) {
     var submitted = false;
     var apiCalls = [];
 
+    // Hook FS.readFile BEFORE page loads — intercept levelstat read
+    await page.evaluateOnNewDocument((data) => {
+      window.__INJECTED_LEVELSTAT__ = data;
+      // Intercept Object.defineProperty to catch Module when WASM sets it
+      var origDefineProperty = Object.defineProperty;
+      Object.defineProperty = function(obj, prop, desc) {
+        origDefineProperty.call(Object, obj, prop, desc);
+        if (prop === 'Module' && desc.value && desc.value.FS) {
+          var FS = desc.value.FS;
+          var origReadFile = FS.readFile;
+          FS.readFile = function(path, opts) {
+            if (path === '/levelstat.txt') {
+              return window.__INJECTED_LEVELSTAT__;
+            }
+            return origReadFile.call(this, path, opts);
+          };
+          // Also write to FS so writeFile approach still works
+          FS.writeFile('/levelstat.txt', data);
+          window.__MODULE_HOOKED__ = true;
+        }
+      };
+    }, LEVELSTAT_5000);
+
+    // Track API calls
     page.on('response', async (res) => {
       var url = res.url();
       if (url.includes('/api/')) {
@@ -106,52 +130,59 @@ async function submitOne(browser, wallet) {
       }
     });
 
+    // Load game — hook fires during WASM init
     await page.goto(GAME_URL, { waitUntil: 'networkidle2', timeout: 30000 });
     await page.waitForSelector('canvas', { timeout: 10000 }).catch(() => {});
-    await sleep(5000);
+    await sleep(6000);
 
-    // Inject levelstat
-    var injectMsg = '';
-    var done = await page.evaluate((data) => {
-      try {
-        var m = window.Module || window.__DOOM_MODULE;
-        if (m && m.FS) { m.FS.writeFile('/levelstat.txt', data); return 'ok-direct'; }
-        return 'no-module';
-      } catch(e) { return 'err-' + e.message; }
-    }, LEVELSTAT_5000);
-    injectMsg = done;
+    // Check if hook worked
+    var hookStatus = await page.evaluate(() => {
+      return {
+        hooked: !!window.__MODULE_HOOKED__,
+        hasModule: !!(window.Module && window.Module.FS),
+        hasDOOM: !!window.__DOOM_MODULE
+      };
+    });
+    var injectMsg = 'hook:' + hookStatus.hooked + ' module:' + hookStatus.hasModule;
 
-    if (done !== 'ok-direct') {
-      await page.evaluate(() => {
-        var o = Object.defineProperty;
-        Object.defineProperty = function(obj, prop, desc) {
-          o.call(Object, obj, prop, desc);
-          if (prop === 'Module' && desc.value && desc.value.FS) window.__DOOM_MODULE = desc.value;
-        };
-      });
-      await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
-      await sleep(7000);
-      var done2 = await page.evaluate((data) => {
-        var m = window.Module || window.__DOOM_MODULE;
-        if (m && m.FS) { m.FS.writeFile('/levelstat.txt', data); return 'ok-hook'; }
-        return 'still-no-module';
+    // Also try direct write as fallback
+    if (!hookStatus.hooked) {
+      var done = await page.evaluate((data) => {
+        try {
+          var m = window.Module || window.__DOOM_MODULE;
+          if (m && m.FS) { m.FS.writeFile('/levelstat.txt', data); return 'ok-direct'; }
+          return 'no-module';
+        } catch(e) { return 'err'; }
       }, LEVELSTAT_5000);
-      injectMsg += ' -> ' + done2;
+      injectMsg += ' fallback:' + done;
     }
 
     result.debug = { inject: injectMsg, apiCalls: apiCalls };
 
+    // Wait for game to process levelstat and submit
     await sleep(10000);
+
+    // Try clicking start/new game to trigger levelstat processing
+    if (!submitted) {
+      await page.evaluate(() => {
+        var btns = document.querySelectorAll('button, [role="button"], div[class*="button"], span[class*="button"]');
+        for (var b of btns) {
+          var t = (b.textContent || '').toLowerCase();
+          if (t.includes('play') || t.includes('start') || t.includes('new game') || t.includes('begin') || t.includes('enter')) {
+            b.click();
+            return;
+          }
+        }
+      });
+      await sleep(8000);
+    }
 
     if (!submitted) {
       await page.evaluate(() => {
-        var btns = document.querySelectorAll('button, [role="button"]');
-        for (var b of btns) {
-          if (/play|start|new|enter/i.test(b.textContent || '')) { b.click(); return; }
-        }
         window.dispatchEvent(new Event('beforeunload'));
       });
-      await sleep(5000);
+      await sleep(3000);
+    }
     }
 
     result.ok = submitted;
