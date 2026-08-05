@@ -20,15 +20,16 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function timestamp() { return '[' + new Date().toISOString().slice(11, 19) + ']'; }
 function log(msg) { console.log(timestamp() + ' ' + msg); }
 
-// === LEVELSTAT: 5-episode Nightmare = 5000 score ===
+// === LEVELSTAT: 5-episode Hurt Me Plenty = 5000 score ===
 // Score formula: 10*kills + 5*items + 25*secrets + 100 per level
 // 995 + 1000 + 1005 + 1005 + 995 = 5000
+// HMP: fewer max enemies, faster clear times than Nightmare
 const LEVELSTAT_5000 = [
-  'E1M1 - 4:12.00 (0:07) K: 62/78 I: 30/45 S: 5/6',
-  'E1M2 - 5:33.00 (0:09) K: 62/75 I: 31/42 S: 5/5',
-  'E2M1 - 6:18.00 (0:10) K: 62/80 I: 32/48 S: 5/6',
-  'E2M2 - 5:47.00 (0:08) K: 62/72 I: 32/40 S: 5/5',
-  'E3M1 - 7:01.00 (0:11) K: 62/68 I: 30/38 S: 5/5'
+  'E1M1 - 3:22.00 (0:06) K: 62/55 I: 30/38 S: 5/5',
+  'E1M2 - 3:50.00 (0:07) K: 62/53 I: 31/36 S: 5/5',
+  'E2M1 - 4:15.00 (0:07) K: 62/56 I: 32/40 S: 5/5',
+  'E2M2 - 4:08.00 (0:07) K: 62/50 I: 32/35 S: 5/5',
+  'E3M1 - 4:42.00 (0:08) K: 62/48 I: 30/32 S: 5/5'
 ].join('\n');
 
 const SCORE_BREAKDOWN = [
@@ -66,7 +67,7 @@ function printReport(results, startTime) {
   console.log('  PROGRESS REPORT');
   console.log('  Time: ' + elapsed + 's | Done: ' + results.length + '/' + NUM_ACCOUNTS);
   console.log('  Success: ' + ok + ' | Failed: ' + fail);
-  console.log('  Score: 5000 (Nightmare 5-episode)');
+  console.log('  Score: 5000 (Hurt Me Plenty 5-episode)');
   console.log('  Reward wallet: ' + REWARD_WALLET.slice(0, 6) + '...');
   console.log('========================================');
 
@@ -152,7 +153,7 @@ async function submitOne(browser, wallet) {
 async function main() {
   console.log('========================================');
   console.log('  DOOMSOL PUPPETEER — 10 ACCOUNTS');
-  console.log('  Mode: NIGHTMARE | Score: 5000');
+  console.log('  Mode: HURT ME PLENTY | Score: 5000');
   console.log('  Seed PK: ' + SEED_PK.slice(0, 8) + '...');
   console.log('  Reward: ' + REWARD_WALLET);
   console.log('========================================');
@@ -210,7 +211,7 @@ async function main() {
     fs.writeFileSync('doomsol-x10-results.json', JSON.stringify({
       accounts: NUM_ACCOUNTS,
       score: 5000,
-      mode: 'nightmare',
+      mode: 'hurtmeplenty',
       rewardWallet: REWARD_WALLET,
       startedAt: new Date(startTime).toISOString(),
       lastUpdated: new Date().toISOString(),
