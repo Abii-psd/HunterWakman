@@ -201,7 +201,20 @@ async function submitOne(browser, wallet) {
     });
     await sleep(3000);
 
-    // Try submitting via fetch with raw response logging
+    // Register wallet first — required before score submission
+    var regResult = await page.evaluate((w) => {
+      return fetch('https://doom-k0mn.onrender.com/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: w.pubkey, name: w.name })
+      }).then(async (r) => {
+        var text = await r.text();
+        return { status: r.status, body: text.slice(0, 150) };
+      }).catch(e => ({ error: e.message }));
+    }, wallet);
+    injectMsg += ' reg:' + regResult.status;
+
+    // Now submit score
     if (!submitted) {
       var fetchResult = await page.evaluate((w) => {
         return fetch('https://doom-k0mn.onrender.com/api/score', {
