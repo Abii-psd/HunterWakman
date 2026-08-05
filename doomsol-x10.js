@@ -204,7 +204,7 @@ async function submitOne(browser, wallet) {
     // Try submitting via fetch with raw response logging
     if (!submitted) {
       var fetchResult = await page.evaluate((w) => {
-        return fetch('/api/score', {
+        return fetch('https://doom-k0mn.onrender.com/api/score', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
