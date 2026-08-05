@@ -1,9 +1,10 @@
-// DoomSol Puppeteer Farmer — WASM Levelstat Injection
-// Requires: npm install puppeteer tweetnacl bs58 @solana/web3.js
+// DoomSol Puppeteer Farmer — Multi-Account WASM Levelstat Injection
+// Requires: npm install puppeteer tweetnacl bs58
 // Usage: node doomsol-puppeteer.js
 //
-// Uses real browser + WASM filesystem injection to submit
-// verified scores that appear on the leaderboard.
+// Opens real browser, injects levelstat into DOOM WASM filesystem,
+// submits verified scores that appear on the leaderboard.
+// Loops through all accounts with one browser session.
 
 const puppeteer = require('puppeteer');
 const nacl = require('tweetnacl');
@@ -15,17 +16,19 @@ const fs = require('fs');
 const SEED_PK = 'OLD_SEED_PK_REMOVED';
 const REWARD_WALLET = 'GW6PN47T4LJASKLHeAuVHhic9JFdyHd4hJsFhDqBukcS';
 const GAME_URL = 'https://www.doomsol.com';
-const ACCOUNT_INDEX = 0;       // change per account
+const START_INDEX = 0;         // first account index
+const NUM_ACCOUNTS = 100;      // how many accounts to submit this run
 const HEADLESS = true;         // set false to see browser
 const MODE = 'nightmare';      // 'nightmare' | 'normal'
 const TARGET_SCORE = 2500;     // 2500 for nightmare, ~300 for normal
+const DELAY_BETWEEN = 5000;    // ms between accounts (avoid rate limit)
+const PAGE_TIMEOUT = 45000;    // max ms per account
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // === LEVELSTAT GENERATOR ===
-// Score per level: 10*kills + 5*items + 25*secrets + 100
 function generateLevelstat(mode, targetScore) {
-  if (mode === 'nightmare') {
-    return generateNightmare(targetScore);
-  }
+  if (mode === 'nightmare') return generateNightmare(targetScore);
   return generateNormal(targetScore);
 }
 
@@ -33,60 +36,31 @@ function generateNormal(targetScore) {
   var kills = Math.floor(targetScore * 0.40 / 10);
   var items = Math.floor(targetScore * 0.30 / 5);
   var secrets = Math.floor(targetScore * 0.20 / 25);
-
   var minutes = 1 + Math.floor(Math.random() * 3);
   var seconds = Math.floor(Math.random() * 60);
   var timeStr = minutes + ':' + String(seconds).padStart(2, '0') + '.00';
   var penaltyStr = '0:' + String(Math.floor(seconds * 0.7)).padStart(2, '0');
-
   var maxKills = kills + Math.floor(Math.random() * 20);
   var maxItems = items + Math.floor(Math.random() * 15);
   var maxSecrets = secrets + Math.floor(Math.random() * 3) + 1;
-
   return 'E1M1 - ' + timeStr + ' (' + penaltyStr + ') K: ' + kills + '/' + maxKills +
          ' I: ' + items + '/' + maxItems + ' S: ' + secrets + '/' + maxSecrets;
 }
 
-// Nightmare: 3 episodes, high enemy density, fast clear times
-// Episode 1: Knee-Deep in the Dead (180 enemies, 80 items, 9 secrets)
-// Episode 2: Shores of Hell (170 enemies, 75 items, 9 secrets)
-// Episode 3: Inferno (160 enemies, 70 items, 9 secrets)
 function generateNightmare(targetScore) {
-  // Distribute score across 3 episodes
-  // Target per episode: ~830-840
-  // Episode 1: E1M1-E1M8, Episode 2: E2M1-E2M8, Episode 3: E3M1-E3M8
-
-  // Total score = sum of (10*k + 5*i + 25*s + 100) per level
-  // Nightmare has ~60-70 enemies per level
-  // We'll use 3 levels: E1M1, E2M1, E3M1
-
-  var remaining = targetScore - 300; // minus 100 base per level
-  var ep1Score = Math.floor(remaining * 0.36);
-  var ep2Score = Math.floor(remaining * 0.33);
-  var ep3Score = remaining - ep1Score - ep2Score;
-
-  // Episode 1: k=68, i=28, s=3 → 680+140+75+100 = 995
-  // Actually let me calculate directly
-  // For ~2500: distribute as 930 + 810 + 760 = 2500
+  // 3 episodes: E1M1 930 + E2M1 810 + E3M1 760 = 2500
   var levels = [
     { ep: 'E1M1', kills: 63, maxK: 78, items: 25, maxI: 40, secrets: 3, maxS: 5, min: 4, sec: 12 },
     { ep: 'E2M1', kills: 55, maxK: 70, items: 22, maxI: 36, secrets: 2, maxS: 4, min: 5, sec: 33 },
     { ep: 'E3M1', kills: 52, maxK: 65, items: 18, maxI: 30, secrets: 2, maxS: 3, min: 6, sec: 47 }
   ];
-
   var lines = [];
-  var total = 0;
   for (var l of levels) {
-    var score = 10*l.kills + 5*l.items + 25*l.secrets + 100;
-    total += score;
     var timeStr = l.min + ':' + String(l.sec).padStart(2, '0') + '.00';
     var penaltyStr = '0:' + String(Math.floor(l.sec * 0.6)).padStart(2, '0');
     lines.push(l.ep + ' - ' + timeStr + ' (' + penaltyStr + ') K: ' + l.kills + '/' + l.maxK +
                ' I: ' + l.items + '/' + l.maxI + ' S: ' + l.secrets + '/' + l.maxS);
   }
-
-  console.log('Nightmare score breakdown: ' + total + ' (target: ' + targetScore + ')');
-
   return lines.join('\n');
 }
 
@@ -96,266 +70,200 @@ function deriveWallet(seedSk, index) {
   var seedPub = bs58.encode(seedKp.publicKey);
   var hash = crypto.createHash('sha256').update(seedPub + ':' + index).digest();
   var newKp = nacl.sign.keyPair.fromSeed(hash.slice(0, 32));
+  var prefixes = ['Alpha','Bravo','Charlie','Delta','Echo','Fox','Ghost','Hawk','Ice','Jade',
+    'Kilo','Lima','Mike','Nova','Oscar','Papa','Queen','Romeo','Sierra','Tango',
+    'Ultra','Victor','Whisky','Xray','Yankee','Zulu','Storm','Blade','Fang','Wolf'];
   return {
     pubkey: bs58.encode(newKp.publicKey),
     secretKey: bs58.encode(newKp.secretKey),
-    name: 'Player' + index,
+    name: prefixes[index % prefixes.length] + (Math.floor(index / prefixes.length) || ''),
     index: index
   };
 }
 
-// === MAIN ===
-async function main() {
-  console.log('=== DOOMSOL PUPPETEER FARMER ===');
-  console.log('');
-
-  // Derive wallet
-  var seedSk = bs58.decode(SEED_PK);
-  var wallet = deriveWallet(seedSk, ACCOUNT_INDEX);
-  console.log('Wallet: ' + wallet.pubkey);
-  console.log('Name: ' + wallet.name);
-  console.log('');
-
-  // Generate levelstat based on mode
-  var targetScore = TARGET_SCORE;
-  var levelstat = generateLevelstat(MODE, targetScore);
-  console.log('Mode: ' + MODE + ' | Target score: ~' + targetScore);
-  console.log('Levelstat:\n' + levelstat);
-  console.log('');
-
-  // Launch browser
-  console.log('Launching browser...');
-  var browser = await puppeteer.launch({
-    headless: HEADLESS ? 'new' : false,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-gpu',
-      '--use-gl=swiftshader',     // software WebGL for DOOM
-      '--disable-web-security',
-      '--disable-features=IsolateOrigins,site-per-process'
-    ]
-  });
-
+// === SUBMIT ONE ACCOUNT ===
+async function submitAccount(browser, wallet, levelstat, log) {
   var page = await browser.newPage();
-
-  // Intercept console logs from the page
-  page.on('console', msg => {
-    if (msg.type() === 'log') console.log('  [PAGE] ' + msg.text());
-  });
-
-  // Track score submission API calls
-  var scoreSubmitted = false;
-  var submitResult = null;
-  page.on('response', async (response) => {
-    var url = response.url();
-    if (url.includes('/api/score') && response.request().method() === 'POST') {
-      try {
-        submitResult = await response.json();
-        scoreSubmitted = true;
-        console.log('  [API] Score submit response: ' + JSON.stringify(submitResult));
-      } catch(e) {}
-    }
-  });
+  var result = { index: wallet.index, name: wallet.name, pubkey: wallet.pubkey, ok: false };
 
   try {
-    // Navigate to game
-    console.log('Loading ' + GAME_URL + '...');
-    await page.goto(GAME_URL, { waitUntil: 'networkidle2', timeout: 60000 });
-    console.log('Page loaded');
-
-    // Wait for the game canvas / WASM to initialize
-    // DOOM runs in a canvas element
-    await page.waitForSelector('canvas', { timeout: 30000 }).catch(() => {
-      console.log('No canvas found — trying iframe...');
-    });
-
-    // Give WASM time to boot
-    console.log('Waiting for game to initialize...');
-    await new Promise(r => setTimeout(r, 5000));
-
-    // Check if Module.FS is accessible
-    var fsReady = await page.evaluate(() => {
-      return typeof window.Module !== 'undefined' &&
-             typeof window.Module.FS !== 'undefined';
-    });
-    console.log('Module.FS ready: ' + fsReady);
-
-    if (!fsReady) {
-      // Try finding Module on window or in iframes
-      console.log('Searching for Module in frames...');
-      var frames = page.frames();
-      for (var f of frames) {
+    // Track API calls
+    var submitted = false;
+    page.on('response', async (response) => {
+      var url = response.url();
+      if (url.includes('/api/score') && response.request().method() === 'POST') {
         try {
-          var hasFS = await f.evaluate(() => {
-            return typeof window.Module !== 'undefined' &&
-                   typeof window.Module.FS !== 'undefined';
-          });
-          if (hasFS) {
-            console.log('Found Module.FS in frame: ' + f.url());
-            page = f; // switch to game frame
-            fsReady = true;
-            break;
-          }
+          var body = await response.json();
+          if (body.ok) { submitted = true; result.ok = true; }
         } catch(e) {}
       }
-    }
+    });
 
-    if (!fsReady) {
-      // Last resort — inject a hook to catch when Module initializes
-      console.log('Injecting Module hook...');
+    // Load game
+    await page.goto(GAME_URL, { waitUntil: 'networkidle2', timeout: 30000 });
+
+    // Wait for WASM canvas
+    await page.waitForSelector('canvas', { timeout: 15000 }).catch(() => {});
+
+    // Give WASM time to boot
+    await sleep(4000);
+
+    // Try to access Module.FS and inject levelstat
+    var injected = await page.evaluate((data) => {
+      try {
+        var mod = window.Module || window.__DOOM_MODULE;
+        if (mod && mod.FS) {
+          mod.FS.writeFile('/levelstat.txt', data);
+          return true;
+        }
+        return false;
+      } catch(e) { return false; }
+    }, levelstat);
+
+    if (!injected) {
+      // Try hook approach
       await page.evaluate(() => {
-        var origDefineProperty = Object.defineProperty;
+        var orig = Object.defineProperty;
         Object.defineProperty = function(obj, prop, desc) {
-          origDefineProperty.call(Object, obj, prop, desc);
+          orig.call(Object, obj, prop, desc);
           if (prop === 'Module' && desc.value && desc.value.FS) {
             window.__DOOM_MODULE = desc.value;
           }
         };
       });
-      // Reload to catch the Module definition
-      await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
-      await new Promise(r => setTimeout(r, 8000));
-
-      fsReady = await page.evaluate(() => {
-        return !!(window.__DOOM_MODULE && window.__DOOM_MODULE.FS);
-      });
-      console.log('Module.FS after hook: ' + fsReady);
-    }
-
-    if (!fsReady) {
-      console.log('WARNING: Could not access Module.FS — trying direct inject anyway');
-    }
-
-    // Inject levelstat into WASM filesystem
-    console.log('Injecting levelstat...');
-    var injectResult = await page.evaluate((levelstatData) => {
-      try {
+      await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+      await sleep(6000);
+      injected = await page.evaluate((data) => {
         var mod = window.Module || window.__DOOM_MODULE;
         if (mod && mod.FS) {
-          mod.FS.writeFile('/levelstat.txt', levelstatData);
-          return 'injected via Module.FS';
+          mod.FS.writeFile('/levelstat.txt', data);
+          return true;
         }
-        // Fallback: try IDBFS or other storage
-        if (window.indexedDB) {
-          return 'Module.FS not found — trying IDBFS';
-        }
-        return 'no FS access';
-      } catch(e) {
-        return 'error: ' + e.message;
-      }
-    }, levelstat);
-    console.log('Inject result: ' + injectResult);
-
-    // Wait for score to appear in UI
-    console.log('Waiting for score display...');
-    await new Promise(r => setTimeout(r, 3000));
-
-    // Try to find and interact with game UI
-    // Look for start/play button or score display
-    var uiInfo = await page.evaluate(() => {
-      var info = {};
-
-      // Check for common UI elements
-      var buttons = document.querySelectorAll('button, [role="button"], .btn, .button');
-      info.buttons = [];
-      buttons.forEach(b => {
-        var text = (b.textContent || '').trim().slice(0, 40);
-        if (text) info.buttons.push(text);
-      });
-
-      // Check for score display
-      var scoreEls = document.querySelectorAll('[class*="score"], [id*="score"], [class*="points"]');
-      info.scores = [];
-      scoreEls.forEach(s => {
-        info.scores.push((s.textContent || '').trim().slice(0, 40));
-      });
-
-      // Check page title
-      info.title = document.title;
-
-      return info;
-    });
-    console.log('Page title: ' + uiInfo.title);
-    console.log('Buttons found: ' + JSON.stringify(uiInfo.buttons.slice(0, 10)));
-    console.log('Score elements: ' + JSON.stringify(uiInfo.scores.slice(0, 5)));
-
-    // Try clicking "New Game" or "Play" button
-    if (!scoreSubmitted) {
-      for (var btnText of uiInfo.buttons) {
-        if (/play|start|new game|begin|enter/i.test(btnText)) {
-          console.log('Clicking: ' + btnText);
-          try {
-            await page.evaluate((text) => {
-              var btns = document.querySelectorAll('button, [role="button"]');
-              for (var b of btns) {
-                if (b.textContent.trim() === text) { b.click(); break; }
-              }
-            }, btnText);
-          } catch(e) {}
-          break;
-        }
-      }
+        return false;
+      }, levelstat);
     }
 
-    // Wait for score submission
-    console.log('Waiting for score submission...');
-    await new Promise(r => setTimeout(r, 10000));
+    // Wait for game to process levelstat and submit score
+    await sleep(8000);
 
-    if (scoreSubmitted) {
-      console.log('Score submitted successfully!');
-      console.log(JSON.stringify(submitResult, null, 2));
-    } else {
-      console.log('Score not auto-submitted. Trying manual trigger...');
-
-      // Try accessing game's submit function
+    // If score not auto-submitted, try triggering UI
+    if (!submitted) {
       await page.evaluate(() => {
-        // Try common patterns for triggering score save
-        if (window.dispatchEvent) {
-          window.dispatchEvent(new Event('beforeunload'));
+        // Click any play/start button
+        var btns = document.querySelectorAll('button, [role="button"], .btn');
+        for (var b of btns) {
+          var t = (b.textContent || '').toLowerCase();
+          if (t.includes('play') || t.includes('start') || t.includes('new') || t.includes('enter')) {
+            b.click();
+            return;
+          }
         }
-        // Try calling game submit if exposed
-        if (window.submitScore) window.submitScore();
-        if (window.game && window.game.submitScore) window.game.submitScore();
+        // Trigger unload to force save
+        window.dispatchEvent(new Event('beforeunload'));
       });
-
-      await new Promise(r => setTimeout(r, 5000));
-      console.log('Score submitted after manual trigger: ' + scoreSubmitted);
+      await sleep(5000);
     }
 
-    // Take screenshot for debugging
-    await page.screenshot({ path: 'doomsol-result.png' });
-    console.log('Screenshot saved: doomsol-result.png');
+    if (submitted) {
+      log('OK  #' + wallet.index + ' ' + wallet.name + ' (' + wallet.pubkey.slice(0,8) + '...)');
+    } else {
+      log('??  #' + wallet.index + ' ' + wallet.name + ' — no API call detected');
+    }
 
   } catch(e) {
-    console.error('Error: ' + e.message);
-    await page.screenshot({ path: 'doomsol-error.png' });
-    console.log('Error screenshot saved: doomsol-error.png');
+    log('ERR #' + wallet.index + ' ' + wallet.name + ' — ' + e.message);
   }
 
-  // Check leaderboard
-  console.log('');
-  console.log('=== CHECKING LEADERBOARD ===');
-  var lbPage = await browser.newPage();
-  await lbPage.goto(GAME_URL, { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
-  await new Promise(r => setTimeout(r, 5000));
-
-  var lbData = await lbPage.evaluate(() => {
-    var rows = document.querySelectorAll('[class*="leaderboard"] tr, [class*="leaderboard"] li, [class*="score"] tr');
-    var data = [];
-    rows.forEach(r => data.push((r.textContent || '').trim().slice(0, 80)));
-    return data.slice(0, 15);
-  });
-  console.log('Leaderboard:');
-  lbData.forEach(row => console.log('  ' + row));
-
-  await lbPage.close();
-  await browser.close();
-  console.log('');
-  console.log('Done.');
+  await page.close();
+  return result;
 }
 
-main().catch(e => {
-  console.error('FATAL:', e.message);
-  process.exit(1);
-});
+// === MAIN ===
+async function main() {
+  console.log('=== DOOMSOL PUPPETEER MULTI-FARMER ===');
+  console.log('Mode: ' + MODE + ' | Score: ' + TARGET_SCORE);
+  console.log('Accounts: ' + START_INDEX + '-' + (START_INDEX + NUM_ACCOUNTS - 1) + ' (' + NUM_ACCOUNTS + ' total)');
+  console.log('Delay: ' + DELAY_BETWEEN + 'ms between accounts');
+  console.log('');
+
+  var seedSk = bs58.decode(SEED_PK);
+
+  // Generate levelstat once (same for all accounts, game doesn't track)
+  var levelstat = generateLevelstat(MODE, TARGET_SCORE);
+  console.log('Levelstat (' + MODE + '):');
+  console.log(levelstat);
+  console.log('');
+
+  // Launch browser once
+  console.log('Launching browser...');
+  var browser = await puppeteer.launch({
+    headless: HEADLESS ? 'new' : false,
+    args: [
+      '--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu',
+      '--use-gl=swiftshader', '--disable-web-security',
+      '--disable-features=IsolateOrigins,site-per-process'
+    ]
+  });
+
+  var results = [];
+  var okCount = 0;
+  var errCount = 0;
+  var startTime = Date.now();
+
+  // Warm up: load once to cache assets
+  console.log('Warming up (loading game once to cache)...');
+  var warmPage = await browser.newPage();
+  await warmPage.goto(GAME_URL, { waitUntil: 'networkidle2', timeout: 45000 }).catch(() => {});
+  await sleep(5000);
+  await warmPage.close();
+  console.log('Warmup done. Starting accounts...\n');
+
+  // Submit each account
+  for (var i = 0; i < NUM_ACCOUNTS; i++) {
+    var idx = START_INDEX + i;
+    var wallet = deriveWallet(seedSk, idx);
+
+    var elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+    var eta = NUM_ACCOUNTS - i - 1;
+    var etaStr = eta > 0 ? ' | ETA: ' + Math.round(eta * (Date.now() - startTime) / (i+1) / 1000) + 's' : '';
+
+    var prefix = '[' + (i+1) + '/' + NUM_ACCOUNTS + ' ' + elapsed + 's' + etaStr + '] ';
+    var r = await submitAccount(browser, wallet, levelstat, function(msg) {
+      console.log(prefix + msg);
+    });
+
+    if (r.ok) okCount++; else errCount++;
+    results.push(r);
+
+    // Save progress
+    fs.writeFileSync('puppeteer-results.json', JSON.stringify({
+      ok: okCount, errors: errCount, total: i+1,
+      lastIndex: idx, results: results
+    }, null, 2));
+
+    // Delay between accounts
+    if (i < NUM_ACCOUNTS - 1) await sleep(DELAY_BETWEEN);
+  }
+
+  await browser.close();
+
+  // Final report
+  var totalTime = ((Date.now() - startTime) / 1000).toFixed(0);
+  console.log('');
+  console.log('========================================');
+  console.log('DONE: ' + okCount + '/' + NUM_ACCOUNTS + ' OK in ' + totalTime + 's');
+  console.log('Errors: ' + errCount);
+  console.log('Results saved: puppeteer-results.json');
+  console.log('========================================');
+
+  if (okCount > 0) {
+    console.log('');
+    console.log('Check leaderboard: ' + GAME_URL);
+    console.log('Accounts submitted:');
+    results.filter(r => r.ok).forEach(r => {
+      console.log('  #' + r.index + ' ' + r.name.padEnd(12) + ' ' + r.pubkey);
+    });
+  }
+}
+
+main().catch(e => { console.error('FATAL:', e.message); process.exit(1); });
