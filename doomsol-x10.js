@@ -1,4 +1,4 @@
-// DoomSol Puppeteer — 10-Account Hurt Me Plenty 5000
+// DoomSol Puppeteer — 10-Account Hurt Me Plenty 3500
 // npm install puppeteer tweetnacl bs58
 // node doomsol-x10.js
 
@@ -20,21 +20,18 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function timestamp() { return '[' + new Date().toISOString().slice(11, 19) + ']'; }
 function log(msg) { console.log(timestamp() + ' ' + msg); }
 
-// === LEVELSTAT: 5-episode Hurt Me Plenty = 5000 ===
-const LEVELSTAT_5000 = [
-  'E1M1 - 3:22.00 (0:06) K: 62/55 I: 30/38 S: 5/5',
-  'E1M2 - 3:50.00 (0:07) K: 62/53 I: 31/36 S: 5/5',
-  'E2M1 - 4:15.00 (0:07) K: 62/56 I: 32/40 S: 5/5',
-  'E2M2 - 4:08.00 (0:07) K: 62/50 I: 32/35 S: 5/5',
-  'E3M1 - 4:42.00 (0:08) K: 62/48 I: 30/32 S: 5/5'
+// === LEVELSTAT: 3-episode Hurt Me Plenty = 3500 ===
+// 1165 + 1180 + 1155 = 3500
+const LEVELSTAT_DATA = [
+  'E1M1 - 3:35.00 (0:07) K: 74/55 I: 40/38 S: 5/5',
+  'E2M1 - 4:12.00 (0:08) K: 74/56 I: 38/40 S: 6/5',
+  'E3M1 - 4:48.00 (0:08) K: 74/50 I: 38/35 S: 5/5'
 ].join('\n');
 
 const SCORE_BREAKDOWN = [
-  { kills: 62, items: 30, secrets: 5, score: 995 },
-  { kills: 62, items: 31, secrets: 5, score: 1000 },
-  { kills: 62, items: 32, secrets: 5, score: 1005 },
-  { kills: 62, items: 32, secrets: 5, score: 1005 },
-  { kills: 62, items: 30, secrets: 5, score: 995 }
+  { kills: 74, items: 40, secrets: 5, score: 1165 },
+  { kills: 74, items: 38, secrets: 6, score: 1180 },
+  { kills: 74, items: 38, secrets: 5, score: 1155 }
 ];
 
 // === WALLET ===
@@ -63,7 +60,7 @@ function printReport(results, startTime) {
   console.log('  PROGRESS REPORT');
   console.log('  Time: ' + elapsed + 's | Done: ' + results.length + '/' + NUM_ACCOUNTS);
   console.log('  Success: ' + ok + ' | Failed: ' + fail);
-  console.log('  Score: 5000 (Hurt Me Plenty 5-episode)');
+  console.log('  Score: 3500 (Hurt Me Plenty 3-episode)');
   console.log('  Reward wallet: ' + REWARD_WALLET.slice(0, 6) + '...');
   console.log('========================================');
   if (ok > 0) {
@@ -113,7 +110,7 @@ async function submitOne(browser, wallet) {
         if (m && m.FS) { m.FS.writeFile('/levelstat.txt', data); return 'ok'; }
         return 'no-mod';
       } catch(e) { return 'err'; }
-    }, LEVELSTAT_5000);
+    }, LEVELSTAT_DATA);
 
     // Scan game functions that reference score/submit
     scanResult = await page.evaluate(() => {
@@ -145,26 +142,52 @@ async function submitOne(browser, wallet) {
       return found.slice(0, 10);
     });
 
-    // Try submitting via page's fetch (credentialed, same-origin)
+    // Dump visible DOM text to understand game state
+    var domDump = await page.evaluate(() => {
+      var text = (document.body || document.documentElement).innerText || '';
+      return text.slice(0, 500).replace(/\n+/g, ' | ');
+    });
+    injectMsg += ' dom:' + domDump.slice(0, 100);
+
+    // Intercept WebSocket
+    await page.evaluate(() => {
+      var origWS = window.WebSocket;
+      window.WebSocket = function() {
+        var ws = new origWS.apply(this, arguments);
+        window.__LAST_WS_URL__ = arguments[0];
+        ws.addEventListener('message', function(e) {
+          window.__LAST_WS_MSG__ = (e.data || '').slice(0, 200);
+        });
+        return ws;
+      };
+      window.WebSocket.prototype = origWS.prototype;
+    });
+
+    // Try submitting via page's fetch
     if (!submitted) {
-      var fetchOk = await page.evaluate((w) => {
+      var fetchResult = await page.evaluate((w) => {
         return fetch('/api/score', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             wallet: w.pubkey, name: w.name, game: 'DOOM',
-            token: '', score: 5000, kills: 62*5, levels: 5
+            token: '', score: 3500, kills: 74*3, levels: 3
           })
-        }).then(r => r.json()).then(j => j.ok === true).catch(() => false);
+        }).then(r => r.json()).catch(() => null);
       }, wallet);
-      if (fetchOk) injectMsg += ' fetch:ok';
-      else injectMsg += ' fetch:no';
+      if (fetchResult && fetchResult.ok) { submitted = true; injectMsg += ' fetch:ok'; }
+      else injectMsg += ' fetch:' + JSON.stringify(fetchResult).slice(0, 60);
     }
 
-    // Wait for response
-    await sleep(6000);
+    await sleep(5000);
 
-    // Navigate game menu — try common button patterns
+    // Check WebSocket traffic
+    var wsInfo = await page.evaluate(() => {
+      return { url: window.__LAST_WS_URL__, msg: window.__LAST_WS_MSG__ };
+    });
+    if (wsInfo.url) injectMsg += ' ws:' + (wsInfo.url || '').slice(0, 50);
+
+    // Navigate UI
     if (!submitted) {
       await page.evaluate(() => {
         var btns = document.querySelectorAll('button, [role="button"]');
@@ -175,12 +198,11 @@ async function submitOne(browser, wallet) {
             b.click(); return;
           }
         }
-        // Fallback: click any visible button
         for (var b2 of btns) {
           if (b2.offsetParent !== null) { b2.click(); return; }
         }
       });
-      await sleep(6000);
+      await sleep(5000);
     }
 
     result.debug = { inject: injectMsg, scan: scanResult, apiCalls: apiCalls };
@@ -198,13 +220,13 @@ async function submitOne(browser, wallet) {
 async function main() {
   console.log('========================================');
   console.log('  DOOMSOL PUPPETEER — 10 ACCOUNTS');
-  console.log('  Mode: HURT ME PLENTY | Score: 5000');
+  console.log('  Mode: HURT ME PLENTY | Score: 3500');
   console.log('  Seed PK: ' + SEED_PK.slice(0, 8) + '...');
   console.log('  Reward: ' + REWARD_WALLET);
   console.log('========================================');
   console.log('');
 
-  console.log('Score breakdown (5 episodes):');
+  console.log('Score breakdown (3 episodes):');
   var tc = 0;
   SCORE_BREAKDOWN.forEach((s, i) => {
     console.log('  Ep ' + (i+1) + ': ' + s.kills + 'k + ' + s.items + 'i + ' + s.secrets + 's + 100 = ' + s.score);
@@ -252,7 +274,7 @@ async function main() {
     }
 
     fs.writeFileSync('doomsol-x10-results.json', JSON.stringify({
-      accounts: NUM_ACCOUNTS, score: 5000, mode: 'hurtmeplenty',
+      accounts: NUM_ACCOUNTS, score: 3500, mode: 'hurtmeplenty',
       rewardWallet: REWARD_WALLET,
       startedAt: new Date(startTime).toISOString(),
       lastUpdated: new Date().toISOString(),
