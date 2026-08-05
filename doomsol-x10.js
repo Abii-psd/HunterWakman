@@ -183,7 +183,6 @@ async function submitOne(browser, wallet) {
       });
       await sleep(3000);
     }
-    }
 
     result.ok = submitted;
   } catch(e) {
