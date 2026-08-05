@@ -167,21 +167,17 @@ async function submitOne(browser, wallet) {
     // Navigate game menu — try common button patterns
     if (!submitted) {
       await page.evaluate(() => {
-        function tryClick(sel) {
-          var el = document.querySelector(sel);
-          if (el) { el.click(); return true; }
-          return false;
-        }
-        // Try exact selectors first
-        if (!tryClick('button:contains("Play")') &&
-            !tryClick('button:contains("Start")') &&
-            !tryClick('button:contains("New Game")')) {
-          // Fallback: click all buttons
-          var btns = document.querySelectorAll('button');
-          for (var b of btns) {
-            var t = (b.textContent || '').trim();
-            if (t && t.length < 20) { b.click(); break; }
+        var btns = document.querySelectorAll('button, [role="button"]');
+        for (var b of btns) {
+          var t = (b.textContent || '').trim().toLowerCase();
+          if (t === 'play' || t === 'start' || t === 'new game' || t === 'begin' ||
+              t.includes('play') || t.includes('start')) {
+            b.click(); return;
           }
+        }
+        // Fallback: click any visible button
+        for (var b2 of btns) {
+          if (b2.offsetParent !== null) { b2.click(); return; }
         }
       });
       await sleep(6000);
