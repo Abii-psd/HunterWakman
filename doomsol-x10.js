@@ -163,7 +163,45 @@ async function submitOne(browser, wallet) {
       window.WebSocket.prototype = origWS.prototype;
     });
 
-    // Try submitting via page's fetch
+    // Interact with UI: click IDENTIFY YOURSELF, enter name, submit
+    await page.evaluate((name) => {
+      // Click "IDENTIFY YOURSELF" or enter name
+      var all = document.querySelectorAll('button, div, span, input, a');
+      for (var el of all) {
+        var t = (el.textContent || '').trim();
+        if (t.includes('IDENTIFY') || t.includes('identify') || t.includes('name') || t.includes('Name')) {
+          el.click(); break;
+        }
+      }
+      // Look for name input
+      var inputs = document.querySelectorAll('input[type="text"], input:not([type])');
+      for (var inp of inputs) {
+        if (!inp.value) {
+          // Set name via React/Vue internals
+          var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+          nativeSetter.call(inp, name);
+          inp.dispatchEvent(new Event('input', { bubbles: true }));
+          inp.dispatchEvent(new Event('change', { bubbles: true }));
+          break;
+        }
+      }
+    }, wallet.name);
+    await sleep(3000);
+
+    // Click any confirm/submit button
+    await page.evaluate(() => {
+      var btns = document.querySelectorAll('button, [role="button"]');
+      for (var b of btns) {
+        var t = (b.textContent || '').trim().toLowerCase();
+        if (t === 'ok' || t === 'go' || t === 'enter' || t === 'confirm' || t === 'submit' ||
+            t === 'play' || t === 'start' || t === 'save') {
+          b.click(); return;
+        }
+      }
+    });
+    await sleep(3000);
+
+    // Try submitting via fetch with raw response logging
     if (!submitted) {
       var fetchResult = await page.evaluate((w) => {
         return fetch('/api/score', {
@@ -173,10 +211,20 @@ async function submitOne(browser, wallet) {
             wallet: w.pubkey, name: w.name, game: 'DOOM',
             token: '', score: 3500, kills: 74*3, levels: 3
           })
-        }).then(r => r.json()).catch(() => null);
+        }).then(async (r) => {
+          var text = await r.text();
+          return { status: r.status, body: text.slice(0, 200) };
+        }).catch(e => ({ error: e.message }));
       }, wallet);
-      if (fetchResult && fetchResult.ok) { submitted = true; injectMsg += ' fetch:ok'; }
-      else injectMsg += ' fetch:' + JSON.stringify(fetchResult).slice(0, 60);
+      if (fetchResult && fetchResult.status === 200) {
+        try {
+          var b = JSON.parse(fetchResult.body);
+          if (b.ok) { submitted = true; injectMsg += ' fetch:ok'; }
+          else injectMsg += ' fetch:' + JSON.stringify(b).slice(0, 60);
+        } catch(e) { injectMsg += ' fetch:raw:' + fetchResult.body.slice(0, 50); }
+      } else {
+        injectMsg += ' fetch:' + JSON.stringify(fetchResult).slice(0, 80);
+      }
     }
 
     await sleep(5000);
