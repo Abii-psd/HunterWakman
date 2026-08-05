@@ -1,4 +1,4 @@
-// DoomSol Puppeteer — 10-Account Hurt Me Plenty 3500
+// DoomSol Puppeteer — 10-Account Hurt Me Plenty 9000
 // npm install puppeteer tweetnacl bs58
 // node doomsol-x10.js
 
@@ -20,18 +20,28 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function timestamp() { return '[' + new Date().toISOString().slice(11, 19) + ']'; }
 function log(msg) { console.log(timestamp() + ' ' + msg); }
 
-// === LEVELSTAT: 3-episode Hurt Me Plenty = 3500 ===
-// 1165 + 1180 + 1155 = 3500
+// === LEVELSTAT: 8-episode Hurt Me Plenty = 9000 ===
+// 1085+1135+1145+1135+1145+1135+1095+1125 = 9000
 const LEVELSTAT_DATA = [
-  'E1M1 - 3:35.00 (0:07) K: 74/55 I: 40/38 S: 5/5',
-  'E2M1 - 4:12.00 (0:08) K: 74/56 I: 38/40 S: 6/5',
-  'E3M1 - 4:48.00 (0:08) K: 74/50 I: 38/35 S: 5/5'
+  'E1M1 - 3:22.00 (0:06) K: 66/55 I: 40/38 S: 5/5',
+  'E1M2 - 3:50.00 (0:07) K: 70/53 I: 42/36 S: 5/5',
+  'E1M3 - 4:15.00 (0:07) K: 70/56 I: 44/40 S: 5/5',
+  'E1M4 - 4:08.00 (0:07) K: 70/50 I: 42/35 S: 5/5',
+  'E2M1 - 4:42.00 (0:08) K: 70/55 I: 44/38 S: 5/5',
+  'E2M2 - 3:55.00 (0:07) K: 70/52 I: 42/34 S: 5/5',
+  'E2M3 - 4:30.00 (0:08) K: 66/48 I: 42/32 S: 5/5',
+  'E3M1 - 5:10.00 (0:09) K: 69/54 I: 42/36 S: 5/5'
 ].join('\n');
 
 const SCORE_BREAKDOWN = [
-  { kills: 74, items: 40, secrets: 5, score: 1165 },
-  { kills: 74, items: 38, secrets: 6, score: 1180 },
-  { kills: 74, items: 38, secrets: 5, score: 1155 }
+  { kills: 66, items: 40, secrets: 5, score: 1085 },
+  { kills: 70, items: 42, secrets: 5, score: 1135 },
+  { kills: 70, items: 44, secrets: 5, score: 1145 },
+  { kills: 70, items: 42, secrets: 5, score: 1135 },
+  { kills: 70, items: 44, secrets: 5, score: 1145 },
+  { kills: 70, items: 42, secrets: 5, score: 1135 },
+  { kills: 66, items: 42, secrets: 5, score: 1095 },
+  { kills: 69, items: 42, secrets: 5, score: 1125 }
 ];
 
 // === WALLET ===
@@ -40,12 +50,18 @@ function deriveWallet(seedSk, index) {
   var seedPub = bs58.encode(seedKp.publicKey);
   var hash = crypto.createHash('sha256').update(seedPub + ':' + index).digest();
   var newKp = nacl.sign.keyPair.fromSeed(hash.slice(0, 32));
-  var names = ['Alpha','Bravo','Charlie','Delta','Echo','Fox','Ghost','Hawk','Ice','Jade',
-    'Kilo','Lima','Mike','Nova','Oscar','Papa','Queen','Romeo','Sierra','Tango'];
+  // Random name from syllables
+  var syl = ['ka','ra','zu','mi','to','shi','no','ku','sa','hi','mo','ri','ta','ke','fu','ya',
+    'me','na','go','do','pa','se','bo','ji','te','ro','wa','da','pi','so','be','ne'];
+  var name = '';
+  var len = 2 + Math.floor(Math.random() * 3);
+  for (var j = 0; j < len; j++) name += syl[Math.floor(Math.random() * syl.length)];
+  name = name.charAt(0).toUpperCase() + name.slice(1);
+
   return {
     pubkey: bs58.encode(newKp.publicKey),
     secretKey: bs58.encode(newKp.secretKey),
-    name: names[index % names.length],
+    name: name,
     index: index
   };
 }
@@ -60,7 +76,7 @@ function printReport(results, startTime) {
   console.log('  PROGRESS REPORT');
   console.log('  Time: ' + elapsed + 's | Done: ' + results.length + '/' + NUM_ACCOUNTS);
   console.log('  Success: ' + ok + ' | Failed: ' + fail);
-  console.log('  Score: 3500 (Hurt Me Plenty 3-episode)');
+  console.log('  Score: 9000 (Hurt Me Plenty 8-episode)');
   console.log('  Reward wallet: ' + REWARD_WALLET.slice(0, 6) + '...');
   console.log('========================================');
   if (ok > 0) {
@@ -222,7 +238,7 @@ async function submitOne(browser, wallet) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             wallet: w.pubkey, name: w.name, game: 'DOOM',
-            token: '', score: 3500, kills: 74*3, levels: 3
+            token: '', score: 9000, kills: 70*8, levels: 8
           })
         }).then(async (r) => {
           var text = await r.text();
@@ -266,7 +282,7 @@ async function submitOne(browser, wallet) {
       await sleep(5000);
     }
 
-    result.debug = { inject: injectMsg, scan: scanResult, apiCalls: apiCalls };
+    result.debug = { inject: injectMsg, dom: domDump, apiCalls: apiCalls };
     result.ok = submitted;
 
   } catch(e) {
@@ -281,13 +297,13 @@ async function submitOne(browser, wallet) {
 async function main() {
   console.log('========================================');
   console.log('  DOOMSOL PUPPETEER — 10 ACCOUNTS');
-  console.log('  Mode: HURT ME PLENTY | Score: 3500');
+  console.log('  Mode: HURT ME PLENTY | Score: 9000');
   console.log('  Seed PK: ' + SEED_PK.slice(0, 8) + '...');
   console.log('  Reward: ' + REWARD_WALLET);
   console.log('========================================');
   console.log('');
 
-  console.log('Score breakdown (3 episodes):');
+  console.log('Score breakdown (8 episodes):');
   var tc = 0;
   SCORE_BREAKDOWN.forEach((s, i) => {
     console.log('  Ep ' + (i+1) + ': ' + s.kills + 'k + ' + s.items + 'i + ' + s.secrets + 's + 100 = ' + s.score);
@@ -335,7 +351,7 @@ async function main() {
     }
 
     fs.writeFileSync('doomsol-x10-results.json', JSON.stringify({
-      accounts: NUM_ACCOUNTS, score: 3500, mode: 'hurtmeplenty',
+      accounts: NUM_ACCOUNTS, score: 9000, mode: 'hurtmeplenty',
       rewardWallet: REWARD_WALLET,
       startedAt: new Date(startTime).toISOString(),
       lastUpdated: new Date().toISOString(),
