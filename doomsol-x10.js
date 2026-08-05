@@ -1,4 +1,4 @@
-// DoomSol Puppeteer — 10-Account Hurt Me Plenty 9000
+// DoomSol Puppeteer — 5-Account Ultra-Violence 9000
 // npm install puppeteer tweetnacl bs58
 // node doomsol-x10.js
 
@@ -11,7 +11,7 @@ const fs = require('fs');
 const SEED_PK = 'SEED_PK_REMOVED';
 const REWARD_WALLET = 'GW6PN47T4LJASKLHeAuVHhic9JFdyHd4hJsFhDqBukcS';
 const GAME_URL = 'https://www.doomsol.com';
-const NUM_ACCOUNTS = 10;
+const NUM_ACCOUNTS = 5;
 const HEADLESS = true;
 const DELAY_BETWEEN = 8000;
 
@@ -19,16 +19,16 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function ts() { return '[' + new Date().toISOString().slice(11, 19) + ']'; }
 function log(msg) { console.log(ts() + ' ' + msg); }
 
-// 8-episode HMP = 9000: 1085+1135+1145+1135+1145+1135+1095+1125 = 9000
+// 8-episode Ultra-Violence = 9000: kills=551, items=338, secrets=40, levels=8
 const LEVELSTAT = [
-  'E1M1 - 3:22.00 (0:06) K: 66/55 I: 40/38 S: 5/5',
-  'E1M2 - 3:50.00 (0:07) K: 70/53 I: 42/36 S: 5/5',
-  'E1M3 - 4:15.00 (0:07) K: 70/56 I: 44/40 S: 5/5',
-  'E1M4 - 4:08.00 (0:07) K: 70/50 I: 42/35 S: 5/5',
-  'E2M1 - 4:42.00 (0:08) K: 70/55 I: 44/38 S: 5/5',
-  'E2M2 - 3:55.00 (0:07) K: 70/52 I: 42/34 S: 5/5',
-  'E2M3 - 4:30.00 (0:08) K: 66/48 I: 42/32 S: 5/5',
-  'E3M1 - 5:10.00 (0:09) K: 69/54 I: 42/36 S: 5/5'
+  'E1M1 - 4:22.00 (0:07) K: 66/78 I: 40/55 S: 5/6',
+  'E1M2 - 5:10.00 (0:09) K: 70/75 I: 42/50 S: 5/6',
+  'E1M3 - 5:45.00 (0:10) K: 70/80 I: 44/56 S: 5/6',
+  'E1M4 - 5:20.00 (0:08) K: 70/72 I: 42/48 S: 5/5',
+  'E2M1 - 6:12.00 (0:10) K: 70/78 I: 44/54 S: 5/6',
+  'E2M2 - 5:30.00 (0:09) K: 70/74 I: 42/50 S: 5/6',
+  'E2M3 - 6:00.00 (0:10) K: 66/68 I: 42/46 S: 5/5',
+  'E3M1 - 6:40.00 (0:11) K: 69/72 I: 42/50 S: 5/6'
 ].join('\n');
 
 function deriveWallet(seedSk, index) {
@@ -104,7 +104,7 @@ async function submitOne(browser, wallet) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             wallet: w.pubkey, name: w.name, game: 'DOOM',
-            token: '', score: 9000, kills: 560, levels: 8
+            token: '', score: 9000, kills: 551, items: 338, secrets: 40, levels: 8
           })
         }).then(r => r.json());
 
@@ -120,7 +120,7 @@ async function submitOne(browser, wallet) {
         // Minimal 13-byte DOOM demo header: version(1) + skill(1) + episode(1) + map(1) + mode(1) + players(4) + pad(4)
         var demoHeader = new Uint8Array(13);
         demoHeader[0] = 0x6C; // 'l' — version marker
-        demoHeader[1] = 3;     // skill: Hurt Me Plenty
+        demoHeader[1] = 4;     // skill: Ultra-Violence
         demoHeader[2] = 1;     // episode 1
         demoHeader[3] = 1;     // map 1
 
@@ -171,7 +171,7 @@ async function submitOne(browser, wallet) {
 
 async function main() {
   console.log('========================================');
-  console.log('  DOOMSOL — 10 ACCOUNTS | HMP | 9000');
+  console.log('  DOOMSOL — 5 ACCOUNTS | UV | 9000');
   console.log('  Seed: ' + SEED_PK.slice(0, 8) + '...');
   console.log('========================================\n');
 
@@ -204,7 +204,7 @@ async function main() {
     log('[' + (i+1) + '/' + NUM_ACCOUNTS + '] ' + (r.ok ? 'OK' : 'FAIL') + ' ' + info);
 
     fs.writeFileSync('doomsol-x10-results.json', JSON.stringify({
-      accounts: NUM_ACCOUNTS, score: 9000, mode: 'hurtmeplenty',
+      accounts: NUM_ACCOUNTS, score: 9000, mode: 'ultra-violence',
       rewardWallet: REWARD_WALLET,
       ok: results.filter(r => r.ok).length,
       failed: results.filter(r => !r.ok).length,
