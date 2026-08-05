@@ -182,3 +182,20 @@ TRY → FAIL → DIFFERENT APPROACH → FAIL → ANOTHER WAY → NEVER STOP
 - **Type**: Quake deathmatch, same architecture as DoomSol
 - **API**: Only /api/status works (early stage)
 - **Status**: Skill-based FPS, no exploit path
+
+---
+
+## Session: 2026-08-05 — Plonk.land Discovery
+
+### Plonk.land (play.plonk.land)
+- **Type**: SolRPG — 2D browser RPG, Express backend, Colyseus WebSocket
+- **Auth**: `/auth/guest` — FREE guest token, no wallet needed!
+- **Auth Flow**: POST /auth/guest → get token → join Colyseus "world" room
+- **Room**: "world" — requires auth token
+- **Game State**: players, skills (melee/archery/sorcery/restoration/defence), inventory, recipes, wiki, gear, coins, daily tasks
+- **Daily Tasks**: "Catch 25 fish" (110 coins), "List 3 things on market", etc.
+- **Actions**: craft, cook_dish, station_start, station_collect, pack_fish, bank_deposit, bank_withdraw, set_referrer, builder_*
+- **Coins**: Server-authoritative, starts at 0 for new accounts
+- **Exploit Potential**: HIGH — 2D coordinate-based movement, guest token access, Colyseus message protocol fully visible
+- **Auto-farm Strategy**: Connect via Colyseus, move player to resource nodes, interact, craft, sell
+- **Status**: Guest token access confirmed. Need to map movement/combat protocol for full automation.
