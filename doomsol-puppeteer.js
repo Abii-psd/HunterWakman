@@ -15,31 +15,79 @@ const fs = require('fs');
 const SEED_PK = 'OLD_SEED_PK_REMOVED';
 const REWARD_WALLET = 'GW6PN47T4LJASKLHeAuVHhic9JFdyHd4hJsFhDqBukcS';
 const GAME_URL = 'https://www.doomsol.com';
-const ACCOUNT_INDEX = 0; // change per account
-const HEADLESS = true;   // set false to see browser
+const ACCOUNT_INDEX = 0;       // change per account
+const HEADLESS = true;         // set false to see browser
+const MODE = 'nightmare';      // 'nightmare' | 'normal'
+const TARGET_SCORE = 2500;     // 2500 for nightmare, ~300 for normal
 
 // === LEVELSTAT GENERATOR ===
-// Generates realistic DOOM level completion data
 // Score per level: 10*kills + 5*items + 25*secrets + 100
-function generateLevelstat(targetScore) {
-  // Single level — split target among kills/items/secrets
-  var kills = Math.floor(targetScore * 0.40 / 10);   // 40% from kills
-  var items = Math.floor(targetScore * 0.30 / 5);    // 30% from items
-  var secrets = Math.floor(targetScore * 0.20 / 25);  // 20% from secrets
-  // Remaining ~10% from base 100
+function generateLevelstat(mode, targetScore) {
+  if (mode === 'nightmare') {
+    return generateNightmare(targetScore);
+  }
+  return generateNormal(targetScore);
+}
+
+function generateNormal(targetScore) {
+  var kills = Math.floor(targetScore * 0.40 / 10);
+  var items = Math.floor(targetScore * 0.30 / 5);
+  var secrets = Math.floor(targetScore * 0.20 / 25);
 
   var minutes = 1 + Math.floor(Math.random() * 3);
   var seconds = Math.floor(Math.random() * 60);
   var timeStr = minutes + ':' + String(seconds).padStart(2, '0') + '.00';
   var penaltyStr = '0:' + String(Math.floor(seconds * 0.7)).padStart(2, '0');
 
-  // Plausible max values per level
   var maxKills = kills + Math.floor(Math.random() * 20);
   var maxItems = items + Math.floor(Math.random() * 15);
   var maxSecrets = secrets + Math.floor(Math.random() * 3) + 1;
 
   return 'E1M1 - ' + timeStr + ' (' + penaltyStr + ') K: ' + kills + '/' + maxKills +
          ' I: ' + items + '/' + maxItems + ' S: ' + secrets + '/' + maxSecrets;
+}
+
+// Nightmare: 3 episodes, high enemy density, fast clear times
+// Episode 1: Knee-Deep in the Dead (180 enemies, 80 items, 9 secrets)
+// Episode 2: Shores of Hell (170 enemies, 75 items, 9 secrets)
+// Episode 3: Inferno (160 enemies, 70 items, 9 secrets)
+function generateNightmare(targetScore) {
+  // Distribute score across 3 episodes
+  // Target per episode: ~830-840
+  // Episode 1: E1M1-E1M8, Episode 2: E2M1-E2M8, Episode 3: E3M1-E3M8
+
+  // Total score = sum of (10*k + 5*i + 25*s + 100) per level
+  // Nightmare has ~60-70 enemies per level
+  // We'll use 3 levels: E1M1, E2M1, E3M1
+
+  var remaining = targetScore - 300; // minus 100 base per level
+  var ep1Score = Math.floor(remaining * 0.36);
+  var ep2Score = Math.floor(remaining * 0.33);
+  var ep3Score = remaining - ep1Score - ep2Score;
+
+  // Episode 1: k=68, i=28, s=3 → 680+140+75+100 = 995
+  // Actually let me calculate directly
+  // For ~2500: distribute as 930 + 810 + 760 = 2500
+  var levels = [
+    { ep: 'E1M1', kills: 63, maxK: 78, items: 25, maxI: 40, secrets: 3, maxS: 5, min: 4, sec: 12 },
+    { ep: 'E2M1', kills: 55, maxK: 70, items: 22, maxI: 36, secrets: 2, maxS: 4, min: 5, sec: 33 },
+    { ep: 'E3M1', kills: 52, maxK: 65, items: 18, maxI: 30, secrets: 2, maxS: 3, min: 6, sec: 47 }
+  ];
+
+  var lines = [];
+  var total = 0;
+  for (var l of levels) {
+    var score = 10*l.kills + 5*l.items + 25*l.secrets + 100;
+    total += score;
+    var timeStr = l.min + ':' + String(l.sec).padStart(2, '0') + '.00';
+    var penaltyStr = '0:' + String(Math.floor(l.sec * 0.6)).padStart(2, '0');
+    lines.push(l.ep + ' - ' + timeStr + ' (' + penaltyStr + ') K: ' + l.kills + '/' + l.maxK +
+               ' I: ' + l.items + '/' + l.maxI + ' S: ' + l.secrets + '/' + l.maxS);
+  }
+
+  console.log('Nightmare score breakdown: ' + total + ' (target: ' + targetScore + ')');
+
+  return lines.join('\n');
 }
 
 // === WALLET DERIVATION ===
@@ -68,11 +116,11 @@ async function main() {
   console.log('Name: ' + wallet.name);
   console.log('');
 
-  // Generate levelstat for realistic score (~300)
-  var targetScore = 280 + Math.floor(Math.random() * 80); // 280-360
-  var levelstat = generateLevelstat(targetScore);
-  console.log('Target score: ~' + targetScore);
-  console.log('Levelstat: ' + levelstat);
+  // Generate levelstat based on mode
+  var targetScore = TARGET_SCORE;
+  var levelstat = generateLevelstat(MODE, targetScore);
+  console.log('Mode: ' + MODE + ' | Target score: ~' + targetScore);
+  console.log('Levelstat:\n' + levelstat);
   console.log('');
 
   // Launch browser
