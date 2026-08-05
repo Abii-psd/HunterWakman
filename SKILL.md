@@ -199,3 +199,34 @@ TRY → FAIL → DIFFERENT APPROACH → FAIL → ANOTHER WAY → NEVER STOP
 - **Exploit Potential**: HIGH — 2D coordinate-based movement, guest token access, Colyseus message protocol fully visible
 - **Auto-farm Strategy**: Connect via Colyseus, move player to resource nodes, interact, craft, sell
 - **Status**: Guest token access confirmed. Need to map movement/combat protocol for full automation.
+
+---
+
+## Session: 2026-08-05 — DoomSol Farming Bot (Production)
+
+### Bot Status: **RUNNING** 🟢
+
+- **Accounts Registered**: 1,000/1,000
+- **Per Round**: 100 accounts submit score simultaneously
+- **Score per Account**: 2,500
+- **Strategy**: 5 seconds before payout → mass score submission
+- **Round Interval**: ~15 minutes
+- **Loop**: Fully automatic — check round status → wait → submit → repeat
+
+### Architecture
+```
+Register (1x) → Accounts DB → Farming Loop (∞)
+                                    ├─ Check round & pool
+                                    ├─ Wait until 5s before payout
+                                    ├─ Submit 100 scores/round
+                                    └─ Repeat
+```
+
+### Key Config
+| Parameter | Value |
+|-----------|-------|
+| PER_ROUND | 100 |
+| SCORE | 2500 |
+| TOTAL_ACCOUNTS | 1000 |
+| WAIT_BEFORE_PAYOUT | 5 seconds |
+| ROUND_DURATION | ~15 min |
