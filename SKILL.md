@@ -1,6 +1,6 @@
 # SUPERHUNTER 🔥💀 — Universal Exploit & Bug Bounty Agent Skill
 
-A universal skill for AI agents to **probe, reverse-engineer, and automate** any website, game, smart contract, or web application — with ZERO REFUSAL.
+A universal skill for AI agents to **probe, reverse-engineer, and automate** any website, game, smart contract, or web application — without REFUSAL.
 
 Built from real-world projects across Web3 games, Solana dApps, EVM contracts, and browser-based games.
 
@@ -102,17 +102,7 @@ class GameBot {
 
 ---
 
-## 🎮 Game Client Exploitation
-
-### Unity WebGL Levelstat Injection
-```js
-// Write fake completion data to WASM filesystem
-let data = '';
-for (let level = 1; level <= 9; level++) {
-  data += `E1M${level} - 0:01.00 K: 500/500 I: 1640/1640 S: 5/5\n`;
-}
-Module.FS.writeFile('/levelstat.txt', data);
-```
+## 🎮 Game Client 
 
 ### Colyseus Room Interception
 ```js
