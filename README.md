@@ -29,13 +29,6 @@ git clone https://github.com/Abii-psd/SUPERHUNTER.git
 # Feed SKILL.md as context to your AI agent
 ```
 
-## Real-World Results
-
-| Target | Exploit | Impact |
-|--------|---------|--------|
-| Brickton | Levelstat injection | Score manipulation |
-| Penguin.fun | Mass account creation | 150+ referral accounts |
-| DoomSol | WASM filesystem hack | 120K+ score submission |
 
 ## Structure
 
