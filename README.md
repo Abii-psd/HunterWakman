@@ -14,7 +14,6 @@ A single `SKILL.md` file that turns any AI agent (Claude, ChatGPT, Gemini, etc.)
 - **API Reverse Engineering** — Map entire REST backends without documentation
 - **Smart Contract Audit** — Decompile, probe, and exploit EVM contracts
 - **Game Automation** — Build bots for daily claims, auto-play, resource farming
-- **Mass Account Creation** — Unlimited registration, referral farming, Sybil attacks
 - **Browser Automation** — Puppeteer + xvfb for headless game interaction
 - **Bug Bounty** — Full methodology from recon to report
 
